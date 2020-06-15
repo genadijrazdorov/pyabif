@@ -1,0 +1,7 @@
+*.swp
+
+activate.bat
+*.egg-info
+.coverage
+htmlcov
+venv
