@@ -2,6 +2,8 @@
 .~*#
 
 __pycache__
+dist
+
 activate.bat
 *.egg-info
 .coverage
