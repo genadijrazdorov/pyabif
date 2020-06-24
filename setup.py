@@ -20,6 +20,7 @@ setup(
     name='pyabif',
 
     version='0.1.0',
+    license='MIT',
 
     description='A Python ABIF reader',
     long_description=long_description,  # Optional
@@ -95,7 +96,7 @@ setup(
     #
     #   py_modules=["my_module"],
     #
-    packages=find_packages(where='pyabif'),
+    packages=find_packages(),
 
     # Specify which Python versions you support. In contrast to the
     # 'Programming Language' classifiers above, 'pip install' will check this
