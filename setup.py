@@ -19,7 +19,7 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 setup(
     name='pyabif',
 
-    version='0.1.0',
+    version='0.2.0',
     license='MIT',
 
     description='A Python ABIF reader',
