@@ -5,94 +5,104 @@ import click
 import datetime
 import pathlib
 import csv
-import zipfile
+from zipfile import ZipFile, ZIP_DEFLATED, ZIP_BZIP2, ZIP_LZMA
 import io
+import glob
+import contextlib
 
-IGNORE = frozenset('''
-    Satd
-    RMdX
-    OfSc
-    BufT
-    APrX
-'''.strip().split())
+META_LIMIT = 10
+SUFFIX = '.txt.zip'
 
+# COMPRESSION = ZIP_LZMA
+# COMPRESSION = ZIP_BZIP2
+COMPRESSION = ZIP_DEFLATED
+
+COMPRESSLEVEL = 6
 SECOND = datetime.timedelta(seconds=1)
 MINUTE = datetime.timedelta(minutes=1)
 
-LOG_TEMPLATE = '{filename}.log.{name}.csv'
-DATA_TEMPLATE = '{filename}.data.{channel}.csv'
-META_TEMPLATE = '{filename}.meta.csv'
+
+@contextlib.contextmanager
+def txtfile(*, zipfile, path):
+    try:
+        bfh = zipfile.open(str(path), mode='w')
+        fh = io.TextIOWrapper(bfh, newline='')
+        yield fh
+
+    finally:
+        fh.close()
+        bfh.close()
 
 
-def convert_meta(abif, zipfileobj):
-    meta_filename = META_TEMPLATE.format(filename=pathlib.Path(abif.filename).stem)
-    with zipfileobj.open(meta_filename, mode='w') as meta_bin, \
-            io.TextIOWrapper(meta_bin, newline='') as meta:
-        writer = csv.writer(meta)
-        writer.writerow(('Tag', 'Number', 'Value', 'Description'))
+def convert(filename, *, force=False, digits=3, migration_units='minutes'):
+    path = pathlib.Path(filename)
+    archive = path.with_suffix(path.suffix + SUFFIX)
+    path = pathlib.Path(path.name)
+    mode = 'w' if force else 'x'
 
-        global IGNORE
-        IGNORE |= frozenset(('DATA',))
+    zipfile = ZipFile(
+        archive,
+        mode=mode,
+        compression=COMPRESSION,
+        compresslevel=COMPRESSLEVEL
+    )
+    with zipfile, pyABIF(filename) as abif:
 
-        for item in abif.directory.keys():
-            if item[0] in IGNORE:
-                row = list(item) + ['', abif.tag2desc[item]]
+        start = datetime.datetime.combine(abif.RUND3, abif.RUNT3)
+        stop = datetime.datetime.combine(abif.RUND4, abif.RUNT4)
+        runtime = stop - start
 
-            else:
-                row = list(item) + [abif.read(*item), abif.tag2desc[item]]
+        meta = [('Tag', 'ID', 'Value', 'Description')]
+        for item in abif.directory:
+            name, id_ = item
+            value = abif.read(*item)
+            description = abif.tag2desc.get(item, 'NA')
 
-            writer.writerow(row)
+            if name == 'DATA':
+                data_path = path.with_suffix(path.suffix + f'.data.{id_}.txt')
+                with txtfile(zipfile=zipfile, path=data_path) as data:
+                    data_writer = csv.writer(data, dialect='excel-tab')
+                    data_writer.writerow(('Migration time', 'Value'))
 
+                    scan_time = runtime / len(value)
+                    if migration_units == 'minutes':
+                        scan_time /= MINUTE
 
-def convert(filename, force=False, digits=3):
-    pathobj = pathlib.Path(filename)
-    arch = pathobj.with_suffix(pathobj.suffix + '.csv.zip')
-    if force:
-        mode = 'w'
-    else:
-        mode = 'x'
-    # zipfileobj = zipfile.ZipFile(arch, mode=mode)
-    with zipfile.ZipFile(arch, mode=mode) as zipfileobj:
-        with pyABIF(filename) as abif:
-            convert_meta(abif, zipfileobj)
+                    elif migration_units == 'seconds':
+                        scan_time /= SECOND
 
-            start = datetime.datetime.combine(abif.RUND3, abif.RUNT3)
-            stop = datetime.datetime.combine(abif.RUND4, abif.RUNT4)
-            runtime = stop - start
+                    rows = ((scan_time * i, AU) for i, AU in enumerate(value))
+                    data_writer.writerows(rows)
 
-            data_nums = (i for name, i in abif.directory.keys() if name == 'DATA')
-            for i in data_nums:
-                data = abif.read('DATA', i)
-                descr = abif.tag2desc['DATA', i]
-                if ',' in descr:
-                    data_filename = LOG_TEMPLATE.format(
-                        filename=pathobj.stem,
-                        name=descr.split(',', 1)[0].lower()
-                    )
-                else:
-                    data_filename = DATA_TEMPLATE.format(
-                        filename=pathobj.stem,
-                        channel=i
-                    )
+                value = data_path
 
-                with zipfileobj.open(data_filename, mode='w') as data_fh, \
-                        io.TextIOWrapper(data_fh, newline='') as text_fh:
-                    data_writer = csv.writer(text_fh)
-                    data_writer.writerow(('Time', descr))
-                    scan_time = runtime / len(data)
+            elif name in 'RMdX APrX'.split():
+                xml_path = path.with_suffix(path.suffix + f'.{name}.{id_}.xml')
+                with zipfile.open(str(xml_path), mode='w') as xml_handle:
+                    xml_handle.write(bytes(value))
 
-                    def row(j, I):
-                        time = scan_time * j / MINUTE
-                        return '{:.0{:d}f}'.format(time, digits), I
+                value = xml_path
 
-                    data_writer.writerows(row(j, I) for j, I in enumerate(data))
+            elif isinstance(value, (tuple, list)) and len(value) > META_LIMIT:
+                item_path = path.with_suffix(path.suffix + f'.{name}.{id_}.txt')
+                with txtfile(zipfile=zipfile, path=item_path) as item_handle:
+                    item_handle.writelines((f'{v}\n' for v in value))
+
+                value = item_path
+
+            meta.append((*item, value, description))
+
+        meta_path = path.with_suffix(path.suffix + '.meta.csv')
+        with txtfile(zipfile=zipfile, path=meta_path) as meta_handle:
+
+            writer = csv.writer(meta_handle, dialect='excel')
+            writer.writerows(meta)
 
 
 @click.command()
 @click.argument(
-    'filenames',
-    nargs=-1,
-    type=click.Path(exists=True, dir_okay=False)
+    'patterns',
+    nargs=-1
 )
 @click.option(
     '-f', '--force',
@@ -100,6 +110,13 @@ def convert(filename, force=False, digits=3):
     is_flag=True,
     show_default=True,
     help='Force conversion even if resulting file already exists'
+)
+@click.option(
+    '-b', '--batch',
+    default=False,
+    is_flag=True,
+    show_default=True,
+    help='Combine data files in batches'
 )
 @click.option(
     '-d', '--digits',
@@ -115,17 +132,26 @@ def convert(filename, force=False, digits=3):
     show_default=True,
     help='Migration units'
 )
-def main(filenames, force=False, digits=3, migration_units='minutes'):
-    '''Converts FILENAMES from ABIF to txt format
+def main(patterns, *, force=False, batch=False, digits=3, migration_units='minutes'):
+    '''Converts PATTERNS from ABIF to txt format
 
-    FILENAMES are names of ABIF files to convert.
+    PATTERNS are glob filenames of ABIF files to convert.
     '''
     errors = []
     succesful = []
-    with click.progressbar(filenames, label='Files converted') as progress:
+    filenames = [fname for ptrn in patterns for fname in glob.glob(ptrn)]
+
+    click.echo(f'Found {len(filenames)} files to convert.')
+
+    with click.progressbar(filenames, label='Files converted:') as progress:
         for filename in progress:
             try:
-                convert(filename, force=force, digits=digits)
+                convert(
+                    filename,
+                    force=force,
+                    digits=digits,
+                    migration_units=migration_units
+                )
 
             except Exception as exc:
                 errors.append((filename, exc))
@@ -134,13 +160,30 @@ def main(filenames, force=False, digits=3, migration_units='minutes'):
             else:
                 succesful.append(filename)
 
-    if len(filenames) == 1 and len(succesful) == 1:
+    if batch and len(succesful) > 1:
+        batch = ZipFile(
+            'abif.batch.zip',
+            mode='w',
+            compression=COMPRESSION,
+            compresslevel=COMPRESSLEVEL
+        )
+        with batch:
+            for filename in succesful:
+                zipfile = pathlib.Path(filename)
+                zipfile = zipfile.with_suffix(zipfile.suffix + SUFFIX)
+                data_filename = pathlib.Path(filename)
+                data_filename = data_filename.with_suffix(data_filename.suffix + '.data.1.txt')
+                with ZipFile(zipfile, mode='r') as zfh, \
+                        batch.open(str(data_filename), mode='w') as bfh:
+                    bfh.write(zfh.read(data_filename.name))
+
+    if len(filenames) == 1 and succesful:
         click.echo(f"File '{filename}' is converted.")
 
-    elif len(filenames) > 1:
+    elif len(filenames) > 1 and succesful:
         click.echo(f'{len(succesful)} out of {len(filenames)} files are converted.')
 
-    if not succesful:
+    if not succesful and patterns:
         raise click.ClickException('No files were converted.')
 
     if errors:
