@@ -43,7 +43,7 @@ class TestCLI:
 
         assert result.exit_code == 0
         assert result.output.endswith(f"File '{ab1_filename}' is converted.\n")
-        assert pathlib.Path(ab1_filename).with_suffix('.ab1.csv.zip').exists()
+        assert pathlib.Path(ab1_filename).with_suffix('.ab1.txt.zip').exists()
 
     def test_convert_files(self, runner):
         result = runner.invoke(main, ' '.join(ab1_filenames).split())
@@ -53,14 +53,14 @@ class TestCLI:
 
     def test_force_on(self, runner):
         runner.invoke(main, f'{ab1_filename}'.split())
-        assert pathlib.Path(ab1_filename).with_suffix('.ab1.csv.zip').exists()
+        assert pathlib.Path(ab1_filename).with_suffix('.ab1.txt.zip').exists()
 
         runner.invoke(main, f'--force {ab1_filename}'.split())
-        assert pathlib.Path(ab1_filename).with_suffix('.ab1.csv.zip').exists()
+        assert pathlib.Path(ab1_filename).with_suffix('.ab1.txt.zip').exists()
 
     def test_force_off(self, runner):
         runner.invoke(main, f'{ab1_filename}'.split())
-        assert pathlib.Path(ab1_filename).with_suffix('.ab1.csv.zip').exists()
+        assert pathlib.Path(ab1_filename).with_suffix('.ab1.txt.zip').exists()
 
         result = runner.invoke(main, f'{ab1_filename}'.split())
 
