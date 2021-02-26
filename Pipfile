@@ -5,10 +5,12 @@ name = "pypi"
 
 [packages]
 click = "*"
+pyabif = {editable = true, path = "."}
 
 [dev-packages]
 coverage = "*"
 pytest = "*"
+pyabif = {editable = true, path = "."}
 
 [requires]
 python_version = "3.8"
