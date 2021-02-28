@@ -11,6 +11,7 @@ pyabif = {editable = true, path = "."}
 coverage = "*"
 pytest = "*"
 pyabif = {editable = true, path = "."}
+jupyter-console = "*"
 
 [requires]
 python_version = "3.8"
