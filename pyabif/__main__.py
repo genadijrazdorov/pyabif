@@ -1,4 +1,4 @@
-from pyabif import pyABIF
+from pyabif import ABIF
 
 import click
 
@@ -46,7 +46,7 @@ def convert(filename, *, force=False, digits=3, migration_units='minutes'):
         compression=COMPRESSION,
         compresslevel=COMPRESSLEVEL
     )
-    with zipfile, pyABIF(filename) as abif:
+    with zipfile, ABIF(filename) as abif:
 
         start = datetime.datetime.combine(abif.RUND3, abif.RUNT3)
         stop = datetime.datetime.combine(abif.RUND4, abif.RUNT4)

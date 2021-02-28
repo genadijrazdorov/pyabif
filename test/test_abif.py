@@ -1,4 +1,4 @@
-from pyabif import pyABIF
+from pyabif import ABIF
 
 import pytest
 
@@ -23,21 +23,21 @@ fsa_filenames = """
 @pytest.fixture(params=ab1_filenames)
 def ab1(request, path):
     abif_path = path.joinpath(request.param)
-    with pyABIF(str(abif_path)) as abif:
+    with ABIF(str(abif_path)) as abif:
         yield abif, ET.parse(abif_path.with_suffix(abif_path.suffix + '.xml'))
 
 
 @pytest.fixture(params=fsa_filenames)
 def fsa(request, path):
     abif_path = path.joinpath(request.param)
-    with pyABIF(str(abif_path)) as abif:
+    with ABIF(str(abif_path)) as abif:
         yield abif, ET.parse(abif_path.with_suffix(abif_path.suffix + '.xml'))
 
 
 @pytest.fixture(params=ab1_filenames + fsa_filenames)
 def abif(request, path):
     abif_path = path.joinpath(request.param)
-    with pyABIF(str(abif_path)) as abif:
+    with ABIF(str(abif_path)) as abif:
         yield abif, ET.parse(abif_path.with_suffix(abif_path.suffix + '.xml'))
 
 
@@ -56,20 +56,16 @@ def read(etree, name, id):
     return tag.find('Value').text
 
 
-class TestpyABIF:
-    @pytest.mark.xfail
-    def test_fail(self):
-        assert False
-
+class TestABIF:
     def test__init__with_fileobj(self, path):
         abif_path = path.joinpath(ab1_filenames[0])
         with open(str(abif_path), 'rb') as fileobj:
-            abif = pyABIF(fileobj)
+            abif = ABIF(fileobj)
         assert abif.filename is None
 
     def test__getattr__with_closed_file(self):
         path = pathlib.Path(__file__).with_name(ab1_filenames[0])
-        ab1 = pyABIF(str(path))
+        ab1 = ABIF(str(path))
         with pytest.raises(ValueError):
             ab1.User1
 

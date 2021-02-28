@@ -1,1 +1,1 @@
-from .pyabif import pyABIF
+from .abif import ABIF

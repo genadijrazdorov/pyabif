@@ -1,14 +1,16 @@
 import struct
-# from struct import pack, unpack, calcsize
 import pkgutil
 import csv
 import io
 import datetime
-import xml.etree.ElementTree as ET
+# import xml.etree.ElementTree as ET
 
 
 BIG_ENDIAN = '>'
+ENDIAN = BIG_ENDIAN
 
+# Current Data Types
+# Described on page 13. of the Manual
 TYPES = '- B B H h l - f d - h2B 4B llBB ? - - - - p s'.split()
 
 
@@ -20,23 +22,40 @@ def read_tags():
     tag2desc = {}
     for line in reader:
         line = [field for field in line if field]
-        name, num, type_, desc = line
+        tag, num, type_, desc = line
         if num.isdigit():
             num = int(num)
-        tag2desc[(name, num)] = desc
+        tag2desc[(tag, num)] = desc
     return tag2desc
 
 
-class pyABIF:
+class ABIF:
     '''a ABIF file reader
 
+    ABIF (Applied Biosystems Genetic Analysis Data File Format) is a binary
+    file format used by genetic analyzers from Applied Biosystems (today
+    Thermo). Files are designated as ABIF encoded by *.ab1* or *fsa* name
+    extension.
+
+    ABIF encoding can be described as directory of tag, value pairs,
+    where tags are 4 characher plus a single digit designation.
+    For example 'DATA1' is described as *Channel 1 raw data*.
+
+    For same tags single digit can be replaced with multidigit number,
+    for example 'DATA105' represents *Raw data for dye 5*,
+    while 'DATA5' is reserved for *Voltage, measured (decaVolts)*.
+
+    There are number of tags using unlimited number (1-N) designation,
+    for example 'OfScN' for *List of scans that are marked off scale in
+    Collection*, with number designation from 1 to N.
+
     '''
-    HEADER = '>4sh'
-    ITEM = '>4si2h4i'
+    HEADER = f'{ENDIAN}4sh'
+    ITEM = f'{ENDIAN}4si2h4i'
     tag2desc = read_tags()
 
     def __init__(self, fileobj):
-        '''
+        '''ABIF(fileobj)
 
         Parameters
         ----------
@@ -54,14 +73,28 @@ class pyABIF:
 
         self.closed = None
 
+    @classmethod
+    def describe(cls, tag, number=None):
+        if number is None:
+            tag, number = tag[:4], tag[4:]
+            try:
+                number = int(number)
+            except ValueError:
+                number = 1
+        return cls.tag2desc[tag, number]
+
     def open(self):
         if self.filename:
             self.fileobj = open(self.filename, 'rb')
 
-        self.read_header()
-        self.read_directory()
+        self._read_header()
+        self._read_directory()
 
         self.closed = False
+
+    def close(self):
+        if self.closed is False:
+            self.fileobj.close()
 
     def __enter__(self):
         if self.closed is None or self.closed is True:
@@ -71,9 +104,29 @@ class pyABIF:
     def __exit__(self, type_, value, traceback):
         self.close()
 
-    def close(self):
-        if self.closed is False:
-            self.fileobj.close()
+    def _read_header(self):
+        abif, version = self._unpack(self.HEADER, offset=0)
+        assert abif == b'ABIF'
+        self.version = version
+
+        directory = self._unpack(self.ITEM)
+        tdir, one, _, _, elements, size, offset, _ = directory
+
+        assert tdir == b'tdir'
+        assert one == 1
+
+        self._dir_offset = offset
+        self._dir_elements = elements
+
+    def _read_directory(self):
+        self.fileobj.seek(self._dir_offset)
+
+        self.directory = {}
+        for i in range(self._dir_elements):
+            item = self._unpack(self.ITEM)
+            tag, num, type_, _, elements, size, offset, _ = item
+            tag = tag.decode()
+            self.directory[tag, num] = (type_, elements, size, offset)
 
     def _unpack(self, format, packed=None, offset=None):
         if offset:
@@ -93,59 +146,38 @@ class pyABIF:
 
             try:
                 data = data.decode()
-                if data.endswith('\x00'):
-                    data = data[:-1]
 
             except AttributeError:
                 pass
 
+            else:
+                if data.endswith('\x00'):
+                    data = data[:-1]
+
         return data
-
-    def read_header(self):
-        abif, version = self._unpack(self.HEADER, offset=0)
-        assert abif == b'ABIF'
-        self.version = version
-
-        directory = self._unpack(self.ITEM)
-        tdir, one, _, _, elements, size, offset, _ = directory
-
-        assert tdir == b'tdir'
-        assert one == 1
-
-        self._dir_offset = offset
-        self._dir_elements = elements
-
-    def read_directory(self):
-        self.fileobj.seek(self._dir_offset)
-
-        self.directory = {}
-        for i in range(self._dir_elements):
-            item = self._unpack(self.ITEM)
-            name, num, type_, _, elements, size, offset, _ = item
-            name = name.decode()
-            self.directory[name, num] = (type_, elements, size, offset)
 
     def __getattr__(self, attr):
         if attr == 'directory':
             raise ValueError(f"{self} is not opened.")
 
         if len(attr) > 4:
-            name, num = attr[:4], attr[4:]
+            tag, num = attr[:4], attr[4:]
             num = int(num)
 
             try:
-                attr = getattr(self, name)
+                attr = getattr(self, tag)
                 return attr(num)
 
             except AttributeError:
-                return self.read(name, num)
+                return self.read(tag, num)
 
         else:
             raise AttributeError
 
-    def read(self, name, num):
+    def read(self, tag, number):
+        num = number
         try:
-            type_, elements, size, offset = self.directory[name, num]
+            type_, elements, size, offset = self.directory[tag, num]
 
         except KeyError:
             raise AttributeError
@@ -155,13 +187,14 @@ class pyABIF:
             type_ = 1
             user = True
 
-        if elements != 1:
-            fmt = '>{}{}'.format(elements, TYPES[type_])
+        if elements == 1:
+            fmt = f'{ENDIAN}{TYPES[type_]}'
+
         else:
-            fmt = '>{}'.format(TYPES[type_])
+            fmt = f'{ENDIAN}{elements}{TYPES[type_]}'
 
         if size <= 4:
-            value = struct.pack('>l', offset)
+            value = struct.pack(f'{ENDIAN}l', offset)
             value = self._unpack(fmt, packed=value)
 
         else:
@@ -183,8 +216,8 @@ class pyABIF:
         value = self.read('CpEP', 1)
         return value
 
-    def DyeB(self, num):
-        value = self.read('DyeB', num)
+    def DyeB(self, number):
+        value = self.read('DyeB', number)
         return chr(value)
 
     @property
