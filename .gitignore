@@ -1,11 +1,11 @@
+# vim
 *.swp
 .~*#
 
+# python
 __pycache__
 dist
 
-activate.bat
-*.egg-info
+# coverage
 .coverage
 htmlcov
-venv
