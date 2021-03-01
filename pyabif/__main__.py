@@ -56,7 +56,7 @@ def convert(filename, *, force=False, digits=3, migration_units='minutes'):
         for item in abif.directory:
             name, id_ = item
             value = abif.read(*item)
-            description = abif.tag2desc.get(item, 'NA')
+            description = abif.describe(*item) or 'NA'
 
             if name == 'DATA':
                 data_path = path.with_suffix(path.suffix + f'.data.{id_}.txt')

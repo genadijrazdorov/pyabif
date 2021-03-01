@@ -66,3 +66,9 @@ class TestCLI:
 
         assert result.exit_code == 1
         assert 'File exists' in result.output
+
+    def test_batch_convert_files(self, runner):
+        result = runner.invoke(main, ('--batch ' + ' '.join(ab1_filenames)).split())
+
+        assert result.exit_code == 0
+        assert result.output.endswith(f"2 out of 2 files are converted.\n")

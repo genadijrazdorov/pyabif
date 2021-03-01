@@ -63,6 +63,11 @@ class TestABIF:
             abif = ABIF(fileobj)
         assert abif.filename is None
 
+    def test_describe(self):
+        assert ABIF.describe('DATA1') == 'Channel 1 raw data'
+        assert ABIF.describe('DATA', 1) == 'Channel 1 raw data'
+        assert ABIF.describe('DATA') == 'Channel 1 raw data'
+
     def test__getattr__with_closed_file(self):
         path = pathlib.Path(__file__).with_name(ab1_filenames[0])
         ab1 = ABIF(str(path))
@@ -71,6 +76,8 @@ class TestABIF:
 
     def test_read_wrong_attr(self, ab1):
         ab1, etree = ab1
+        with pytest.raises(AttributeError):
+            ab1.Usr2
         with pytest.raises(AttributeError):
             ab1.User2
 

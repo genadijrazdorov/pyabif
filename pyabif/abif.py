@@ -3,7 +3,12 @@ import pkgutil
 import csv
 import io
 import datetime
+import functools
+import hashlib
 # import xml.etree.ElementTree as ET
+
+
+__all__ = ('ABIF',)
 
 
 BIG_ENDIAN = '>'
@@ -13,11 +18,21 @@ ENDIAN = BIG_ENDIAN
 # Described on page 13. of the Manual
 TYPES = '- B B H h l - f d - h2B 4B llBB ? - - - - p s'.split()
 
+HEADER = f'{ENDIAN}4sh'
+ITEM = f'{ENDIAN}4si2h4i'
+
+DIGEST = 'c8d7ff6deca78381b6e6927318af463936238a9d7b99f5f6846d7a39774f174e5686b97703a45f6cfdceb5901e50c0d3318cd9a7df417f8f49c50cfc54bf0f4e'
+
 
 def read_tags():
     package = __name__.rsplit('.', 1)[0]
-    file_ = io.StringIO(pkgutil.get_data(package, 'tags.csv').decode())
-    reader = csv.reader(file_, delimiter='\t')
+    fh = io.StringIO(pkgutil.get_data(package, 'tags.csv').decode())
+
+    digest = hashlib.sha512(fh.read().encode()).hexdigest()
+    assert digest == DIGEST
+    fh.seek(0)
+
+    reader = csv.reader(fh, delimiter='\t')
     next(reader)
     tag2desc = {}
     for line in reader:
@@ -29,7 +44,39 @@ def read_tags():
     return tag2desc
 
 
-class ABIF:
+class ABIFMeta(type):
+    tag2desc = read_tags()
+
+    def __new__(cls, name, bases, namespace, **kwargs):
+        tag2desc = cls.tag2desc
+        read = namespace['read']
+        for tag, num in cls.tag2desc:
+            desc = tag2desc[tag, num]
+            name = tag + str(num)
+
+            if name in namespace:
+                method = namespace[name]
+                method.__doc__ = desc
+
+            else:
+                try:
+                    method = functools.partial(namespace[tag], number=num)
+
+                except KeyError:
+                    method = functools.partial(read, tag=tag, number=num)
+
+                method = property(method, doc=desc)
+
+            namespace[name] = method
+
+        for tag, num in tag2desc:
+            if num == 1:
+                namespace[tag] = namespace[tag + '1']
+
+        return super().__new__(cls, name, bases, namespace, **kwargs)
+
+
+class ABIF(metaclass=ABIFMeta):
     '''a ABIF file reader
 
     ABIF (Applied Biosystems Genetic Analysis Data File Format) is a binary
@@ -50,9 +97,7 @@ class ABIF:
     Collection*, with number designation from 1 to N.
 
     '''
-    HEADER = f'{ENDIAN}4sh'
-    ITEM = f'{ENDIAN}4si2h4i'
-    tag2desc = read_tags()
+    _tag2desc = read_tags()
 
     def __init__(self, fileobj):
         '''ABIF(fileobj)
@@ -75,13 +120,14 @@ class ABIF:
 
     @classmethod
     def describe(cls, tag, number=None):
+        tag2desc = cls._tag2desc
         if number is None:
             tag, number = tag[:4], tag[4:]
-            try:
+            if number.isdigit():
                 number = int(number)
-            except ValueError:
+            else:
                 number = 1
-        return cls.tag2desc[tag, number]
+        return tag2desc.get((tag, number)) or tag2desc.get((tag, 'N'))
 
     def open(self):
         if self.filename:
@@ -105,11 +151,11 @@ class ABIF:
         self.close()
 
     def _read_header(self):
-        abif, version = self._unpack(self.HEADER, offset=0)
+        abif, version = self._unpack(HEADER, offset=0)
         assert abif == b'ABIF'
         self.version = version
 
-        directory = self._unpack(self.ITEM)
+        directory = self._unpack(ITEM)
         tdir, one, _, _, elements, size, offset, _ = directory
 
         assert tdir == b'tdir'
@@ -123,7 +169,7 @@ class ABIF:
 
         self.directory = {}
         for i in range(self._dir_elements):
-            item = self._unpack(self.ITEM)
+            item = self._unpack(ITEM)
             tag, num, type_, _, elements, size, offset, _ = item
             tag = tag.decode()
             self.directory[tag, num] = (type_, elements, size, offset)
@@ -164,12 +210,7 @@ class ABIF:
             tag, num = attr[:4], attr[4:]
             num = int(num)
 
-            try:
-                attr = getattr(self, tag)
-                return attr(num)
-
-            except AttributeError:
-                return self.read(tag, num)
+            return self.read(tag, num)
 
         else:
             raise AttributeError
