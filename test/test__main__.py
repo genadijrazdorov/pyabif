@@ -3,7 +3,6 @@ from pyabif.__main__ import main
 from click.testing import CliRunner
 import pytest
 
-import shutil
 import pathlib
 import zipfile
 
@@ -49,7 +48,7 @@ class TestCLI:
         result = runner.invoke(main, ' '.join(ab1_filenames).split())
 
         assert result.exit_code == 0
-        assert result.output.endswith(f"2 out of 2 files are converted.\n")
+        assert result.output.endswith("2 out of 2 files are converted.\n")
 
     def test_force_on(self, runner):
         runner.invoke(main, f'{ab1_filename}'.split())
@@ -68,7 +67,8 @@ class TestCLI:
         assert 'File exists' in result.output
 
     def test_batch_convert_files(self, runner):
-        result = runner.invoke(main, ('--batch ' + ' '.join(ab1_filenames)).split())
+        result = runner.invoke(main, ('--batch ' +
+                                      ' '.join(ab1_filenames)).split())
 
         assert result.exit_code == 0
-        assert result.output.endswith(f"2 out of 2 files are converted.\n")
+        assert result.output.endswith("2 out of 2 files are converted.\n")

@@ -13,8 +13,8 @@ import contextlib
 META_LIMIT = 10
 SUFFIX = '.txt.zip'
 
-# COMPRESSION = ZIP_LZMA
-# COMPRESSION = ZIP_BZIP2
+COMPRESSION = ZIP_LZMA
+COMPRESSION = ZIP_BZIP2
 COMPRESSION = ZIP_DEFLATED
 
 COMPRESSLEVEL = 6
@@ -84,7 +84,8 @@ def convert(filename, *, force=False, digits=3, migration_units='minutes'):
                 value = xml_path
 
             elif isinstance(value, (tuple, list)) and len(value) > META_LIMIT:
-                item_path = path.with_suffix(path.suffix + f'.{name}.{id_}.txt')
+                item_path = path.with_suffix(path.suffix +
+                                             f'.{name}.{id_}.txt')
                 with txtfile(zipfile=zipfile, path=item_path) as item_handle:
                     item_handle.writelines((f'{v}\n' for v in value))
 
@@ -132,7 +133,8 @@ def convert(filename, *, force=False, digits=3, migration_units='minutes'):
     show_default=True,
     help='Migration units'
 )
-def main(patterns, *, force=False, batch=False, digits=3, migration_units='minutes'):
+def main(patterns, *, force=False, batch=False, digits=3,
+         migration_units='minutes'):
     '''Converts PATTERNS from ABIF to txt format
 
     PATTERNS are glob filenames of ABIF files to convert.
@@ -172,7 +174,9 @@ def main(patterns, *, force=False, batch=False, digits=3, migration_units='minut
                 zipfile = pathlib.Path(filename)
                 zipfile = zipfile.with_suffix(zipfile.suffix + SUFFIX)
                 data_filename = pathlib.Path(filename)
-                data_filename = data_filename.with_suffix(data_filename.suffix + '.data.1.txt')
+                data_filename = data_filename.with_suffix(
+                    data_filename.suffix + '.data.1.txt'
+                )
                 with ZipFile(zipfile, mode='r') as zfh, \
                         batch.open(str(data_filename), mode='w') as bfh:
                     bfh.write(zfh.read(data_filename.name))
@@ -181,7 +185,8 @@ def main(patterns, *, force=False, batch=False, digits=3, migration_units='minut
         click.echo(f"File '{filename}' is converted.")
 
     elif len(filenames) > 1 and succesful:
-        click.echo(f'{len(succesful)} out of {len(filenames)} files are converted.')
+        click.echo(f'{len(succesful)} out of {len(filenames)} files '
+                   'are converted.')
 
     if not succesful and patterns:
         raise click.ClickException('No files were converted.')

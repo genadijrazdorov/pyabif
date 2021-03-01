@@ -21,7 +21,8 @@ TYPES = '- B B H h l - f d - h2B 4B llBB ? - - - - p s'.split()
 HEADER = f'{ENDIAN}4sh'
 ITEM = f'{ENDIAN}4si2h4i'
 
-DIGEST = '0ac522f4b022c72ced9227ff7056b40bcc6bf9c4113af14defd94128292594e3bb7faa91d740576a249ab50da7ed400b9e42aa764b5d952bfb0b4f324cbb12d6'
+DIGEST = '0ac522f4b022c72ced9227ff7056b40bcc6bf9c4113af14defd94128292594e3' \
+    'bb7faa91d740576a249ab50da7ed400b9e42aa764b5d952bfb0b4f324cbb12d6'
 
 
 def read_tags():
